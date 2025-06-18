@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# === CONFIGURATION ===
+IP_PREFIX="10.15.x"                               
+START_IP=2
+END_IP=254
+USER="admin"
+PACKAGE_URL="https://hidden/routeros/7.17_ab238/routeros-7.17_ab238-mipsbe.npk"
+PACKAGE_NAME="routeros-7.17_ab238-mipsbe.npk"
+TARGET_VERSION="7.17_ab238"
+REBOOT_AFTER_INSTALL=true                            # Set to false to skip reboot
+
+# Prompt for password securely
+read -sp "Enter RouterOS password: " PASSWORD
+echo ""
+
+# === LOOP THROUGH IP RANGE ===
+for i in $(seq $START_IP $END_IP); do
+    IP="$IP_PREFIX.$i"
+    echo "Checking $IP..."
+
+    # Ping to verify device is reachable
+    ping -c 1 -W 1 "$IP" > /dev/null
+    if [ $? -ne 0 ]; then
+        echo "No response from $IP"
+        continue
+    fi
+
+    echo "Connecting to $IP..."
+
+    # Get current installed version (routeros or system package)
+    CURRENT_VERSION=$(sshpass -p "$PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$USER@$IP" \
+        "/system package print where name~\"^(routeros|system)\" detail" 2>/dev/null | \
+        grep "version" | awk '{print $2}')
+
+    if [ -z "$CURRENT_VERSION" ]; then
+        echo "Could not determine version on $IP"
+        continue
+    fi
+
+    echo "Current version on $IP: $CURRENT_VERSION"
+
+    if [ "$CURRENT_VERSION" == "$TARGET_VERSION" ]; then
+        echo "Already on target version $TARGET_VERSION. Skipping $IP."
+        continue
+    fi
+
+    echo "Upgrading $IP to $TARGET_VERSION..."
+
+    # Check if .npk file is already present
+    FILE_PRESENT=$(sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" \
+        "/file print where name=\"$PACKAGE_NAME\"" 2>/dev/null | grep "$PACKAGE_NAME")
+
+    if [ -z "$FILE_PRESENT" ]; then
+        echo "Fetching upgrade package on $IP..."
+        sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" \
+            "/tool fetch url=\"$PACKAGE_URL\"" > /dev/null
+    else
+        echo "Package already present on $IP"
+    fi
+
+    # Install the package
+    echo "Installing package..."
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" \
+        "/system package install"
+
+    # Optional reboot
+    if [ "$REBOOT_AFTER_INSTALL" = true ]; then
+        echo "Rebooting $IP..."
+        sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" \
+            "/system reboot"
+    fi
+
+    echo "Done with $IP"
+    echo "------------------------------"
+done
+
+echo "Mass upgrade process completed."

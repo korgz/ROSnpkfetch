@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# === CONFIGURATION ===
+IP_PREFIX="10.15.x"             
+START_IP=2
+END_IP=254
+USER="admin"
+PASSWORD="pass"
+UPGRADE_CMD="/system package update install"
+REBOOT_CMD="/system reboot"
+
+# === LOOP THROUGH IP RANGE ===
+for i in $(seq $START_IP $END_IP); do
+    IP="$IP_PREFIX.$i"
+    echo "Trying $IP..."
+
+    # Ping the device first (timeout = 1 second)
+    ping -c 1 -W 1 "$IP" > /dev/null
+    if [ $? -eq 0 ]; then
+        echo "RouterOS found at $IP, running upgrade..."
+
+        sshpass -p "$PASSWORD" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$USER@$IP" "$UPGRADE_CMD" && \
+        echo "Upgrade triggered on $IP"
+
+        # Optional: Reboot after upgrade
+        # sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$IP" "$REBOOT_CMD"
+    else
+        echo "No response from $IP"
+    fi
+done
+
+echo "Upgrade scan completed."
