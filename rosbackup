@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# === CONFIGURATION ===
+ROUTER_IP="192.168.x.x"
+USER="admin"
+PASSWORD="pass"            
+BACKUP_DIR="$HOME/router_backups"
+DATE=$(date +%Y-%m-%d_%H-%M-%S)
+BACKUP_NAME="routeros_backup_$DATE.backup"
+EXPORT_NAME="routeros_export_$DATE.rsc"
+
+# === 1. Check and Create Backup Directory If Not Exists ===
+if [ ! -d "$BACKUP_DIR" ]; then
+    echo "Creating backup directory at $BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR"
+fi
+
+# === 2. Create Binary and Script Backups on Router ===
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$ROUTER_IP" "/system backup save name=$BACKUP_NAME"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$ROUTER_IP" "/export file=$EXPORT_NAME"
+
+# === 3. Download Backups from Router ===
+sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no "$USER@$ROUTER_IP:$BACKUP_NAME" "$BACKUP_DIR/"
+sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no "$USER@$ROUTER_IP:$EXPORT_NAME.rsc" "$BACKUP_DIR/"
+
+# === 4. Clean Up Remote Files ===
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$ROUTER_IP" "/file remove $BACKUP_NAME"
+sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "$USER@$ROUTER_IP" "/file remove $EXPORT_NAME.rsc"
+
+# === DONE ===
+echo "RouterOS backup completed: $BACKUP_DIR"
